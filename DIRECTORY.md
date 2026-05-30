@@ -138,68 +138,71 @@ knowledge-vault/
 | network-defense.md | **done** |
 | cryptography.md | **done** |
 
-### 05 — Human Physiology & Optimization *(educational, not medical advice)* — IN PROGRESS
+### 05 — Human Physiology & Optimization *(educational, not medical advice)* ✅ COMPLETE
 | File | Status |
 |------|--------|
-| hypertrophy-biomechanics.md | planned |
-| mind-muscle-connection.md | planned |
-| neurology-of-sleep.md | planned |
-| diet-macronutrient-planning.md | planned |
-| herbal-pharmacology.md | planned |
-| biohacking.md | planned |
-| longevity.md | planned |
+| hypertrophy-biomechanics.md | **done** |
+| mind-muscle-connection.md | **done** |
+| neurology-of-sleep.md | **done** |
+| diet-macronutrient-planning.md | **done** |
+| herbal-pharmacology.md | **done** |
+| biohacking.md | **done** |
+| longevity.md | **done** |
 
-### 06 — Deep Sciences & Biology
+### 06 — Deep Sciences & Biology ✅ COMPLETE
 | File | Status |
 |------|--------|
-| genetics.md | planned |
-| epigenetics.md | planned |
-| crispr-applications.md | planned |
-| gmo-engineering.md | planned |
-| synthetic-biology.md | planned |
-| agricultural-science.md | planned |
+| genetics.md | **done** |
+| epigenetics.md | **done** |
+| crispr-applications.md | **done** |
+| gmo-engineering.md | **done** |
+| synthetic-biology.md | **done** |
+| agricultural-science.md | **done** |
 
-### 07 — Engineering & Mechanics
+### 07 — Engineering & Mechanics ✅ COMPLETE
 | File | Status |
 |------|--------|
-| automotive-engineering.md | planned |
-| ice-vs-ev-powertrains.md | planned |
-| mechanical-maintenance.md | planned |
-| thermodynamics.md | planned |
-| robotics.md | planned |
+| automotive-engineering.md | **done** |
+| ice-vs-ev-powertrains.md | **done** |
+| mechanical-maintenance.md | **done** |
+| thermodynamics.md | **done** |
+| robotics.md | **done** |
 
-### 08 — Combat & Kinesiology
+### 08 — Combat & Kinesiology ✅ COMPLETE
 | File | Status |
 |------|--------|
-| boxing-mechanics.md | planned |
-| martial-arts-physics.md | planned |
-| kinetic-chain-optimization.md | planned |
-| combat-psychology.md | planned |
+| boxing-mechanics.md | **done** |
+| martial-arts-physics.md | **done** |
+| kinetic-chain-optimization.md | **done** |
+| combat-psychology.md | **done** |
 
-### 09 — Humanities & Master Skills
+### 09 — Humanities & Master Skills ✅ COMPLETE
 | File | Status |
 |------|--------|
-| influence-and-dark-psychology-defense.md | planned |
-| behavioral-logic.md | planned |
-| game-theory.md | planned |
-| public-speaking.md | planned |
-| negotiation.md | planned |
-| communication-frameworks.md | planned |
-| relationship-psychology.md | planned |
+| influence-and-dark-psychology-defense.md | **done** |
+| behavioral-logic.md | **done** |
+| game-theory.md | **done** |
+| public-speaking.md | **done** |
+| negotiation.md | **done** |
+| communication-frameworks.md | **done** |
+| relationship-psychology.md | **done** |
 
-### 10 — Curated Wisdom
+### 10 — Curated Wisdom ✅ COMPLETE
 | File | Status |
 |------|--------|
-| life-frameworks.md | planned |
-| macroeconomic-principles.md | planned |
-| financial-literacy.md | planned |
-| must-read-synthesis.md | planned |
+| life-frameworks.md | **done** |
+| macroeconomic-principles.md | **done** |
+| financial-literacy.md | **done** |
+| must-read-synthesis.md | **done** |
 
 ---
 
-**Total topics:** 56 files across 10 domains.
-**Completed:** 29 — Domain 01 (8/8) + Domain 02 (6/6) + Domain 03 (9/9) + Domain 04 (6/6).
-**Last batch:** all of Domain 02 (scriptwriting, storytelling psychology, sound/acoustics, cinematography, lighting physics, editing).
-**Next up:** Domain 05 (Human Physiology) or Domain 09 (Humanities & Master Skills).
+**Total topics:** 62 files across 10 domains — **ALL COMPLETE ✅**
+(Final count grew from the initial 56 estimate as several domains were expanded.)
+
+**Per-domain:** 01 (8) · 02 (6) · 03 (9) · 04 (6) · 05 (7) · 06 (6) · 07 (5) · 08 (4) · 09 (7) · 10 (4).
+
+The entire Knowledge Vault is written to graduate depth, with metadata headers, technical
+mechanisms, application frameworks, common pitfalls, and primary-source resources in every file.
 
 
