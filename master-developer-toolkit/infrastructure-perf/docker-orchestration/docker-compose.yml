@@ -1,0 +1,152 @@
+# ---------------------------------------------------------------------------
+# docker-compose.yml
+# Production-leaning local orchestration: API gateway + app services fronted by
+# Redis (cache/rate-limit) and PostgreSQL (durable store). Every service has a
+# healthcheck; dependents wait on healthy upstreams. Internal services are not
+# published to the host — only the gateway is reachable from outside.
+# ---------------------------------------------------------------------------
+name: master-developer-toolkit
+
+x-common-env: &common-env
+  NODE_ENV: production
+  REDIS_URL: redis://redis:6379
+  DATABASE_URL: postgres://app:${POSTGRES_PASSWORD:-app_dev_pw}@postgres:5432/toolkit
+
+x-restart: &restart
+  restart: unless-stopped
+
+services:
+  gateway:
+    <<: *restart
+    build:
+      context: ../..
+      dockerfile: infrastructure-perf/docker-orchestration/Dockerfile.prod
+    environment:
+      <<: *common-env
+      GATEWAY_PORT: "8080"
+      UPSTREAM_MARKET: http://market:3001
+      UPSTREAM_CHAT: http://chat:3002
+      UPSTREAM_CMS: http://cms:3003
+      UPSTREAM_ANALYTICS: http://analytics:3004
+    ports:
+      - "8080:8080"
+    depends_on:
+      redis:
+        condition: service_healthy
+      market:
+        condition: service_started
+    networks: [edge, backplane]
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:8080/healthz').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"]
+      interval: 30s
+      timeout: 3s
+      retries: 3
+      start_period: 20s
+    deploy:
+      resources:
+        limits:
+          cpus: "1.0"
+          memory: 512M
+
+  market:
+    <<: *restart
+    build:
+      context: ../..
+      dockerfile: infrastructure-perf/docker-orchestration/Dockerfile.prod
+    command: ["node", "apps-saas-shells/ecommerce-market/server.js"]
+    environment:
+      <<: *common-env
+      PORT: "3001"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    networks: [backplane]
+    expose: ["3001"]
+
+  chat:
+    <<: *restart
+    build:
+      context: ../..
+      dockerfile: infrastructure-perf/docker-orchestration/Dockerfile.prod
+    command: ["node", "apps-saas-shells/chat-hub/server.js"]
+    environment:
+      <<: *common-env
+      PORT: "3002"
+    depends_on:
+      redis:
+        condition: service_healthy
+    networks: [backplane]
+    expose: ["3002"]
+
+  cms:
+    <<: *restart
+    build:
+      context: ../..
+      dockerfile: infrastructure-perf/docker-orchestration/Dockerfile.prod
+    command: ["node", "apps-saas-shells/headless-cms/server.js"]
+    environment:
+      <<: *common-env
+      PORT: "3003"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks: [backplane]
+    expose: ["3003"]
+
+  analytics:
+    <<: *restart
+    build:
+      context: ../..
+      dockerfile: infrastructure-perf/docker-orchestration/Dockerfile.prod
+    command: ["node", "apps-saas-shells/analytics-dashboard/server.js"]
+    environment:
+      <<: *common-env
+      PORT: "3004"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks: [backplane]
+    expose: ["3004"]
+
+  redis:
+    <<: *restart
+    image: redis:7.4-alpine
+    command: ["redis-server", "--save", "60", "1", "--maxmemory", "256mb", "--maxmemory-policy", "allkeys-lru"]
+    volumes:
+      - redis-data:/data
+    networks: [backplane]
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+
+  postgres:
+    <<: *restart
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: app
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-app_dev_pw}
+      POSTGRES_DB: toolkit
+    volumes:
+      - pg-data:/var/lib/postgresql/data
+      - ../sql-schema-architecture/production-schema.sql:/docker-entrypoint-initdb.d/01-schema.sql:ro
+    networks: [backplane]
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U app -d toolkit"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+
+networks:
+  edge:
+    driver: bridge
+  backplane:
+    driver: bridge
+    internal: true
+
+volumes:
+  redis-data:
+  pg-data:

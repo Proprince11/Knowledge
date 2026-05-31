@@ -1,0 +1,69 @@
+# syntax=docker/dockerfile:1.7
+# ---------------------------------------------------------------------------
+# Multi-stage production image for the Master Developer Toolkit gateway/apps.
+#
+# Stages:
+#   base    - pinned Node runtime + pnpm via corepack
+#   deps    - install ALL deps with a cached pnpm store (best layer caching)
+#   build   - compile TS / bundle, then prune to production deps only
+#   runner  - minimal, non-root, read-only-friendly final image
+#
+# Build:  docker build -f Dockerfile.prod -t toolkit:prod .
+# ---------------------------------------------------------------------------
+
+ARG NODE_VERSION=20.18.0
+
+# --------------------------------- base ------------------------------------
+FROM node:${NODE_VERSION}-bookworm-slim AS base
+ENV PNPM_HOME=/pnpm
+ENV PATH="$PNPM_HOME:$PATH"
+RUN corepack enable && corepack prepare pnpm@9.12.0 --activate
+# dumb-init reaps zombies and forwards signals for clean shutdown.
+RUN apt-get update && apt-get install -y --no-install-recommends dumb-init \
+    && rm -rf /var/lib/apt/lists/*
+WORKDIR /app
+
+# --------------------------------- deps ------------------------------------
+FROM base AS deps
+# Copy only manifests first so dependency layers cache across code changes.
+COPY package.json pnpm-lock.yaml pnpm-workspace.yaml* ./
+COPY apps-media-ai/*/package.json   apps-media-ai/
+COPY apps-saas-shells/*/package.json apps-saas-shells/
+COPY infrastructure-perf/*/package.json infrastructure-perf/
+# BuildKit cache mount keeps the pnpm content-addressable store warm.
+RUN --mount=type=cache,id=pnpm,target=/pnpm/store \
+    pnpm install --frozen-lockfile
+
+# -------------------------------- build ------------------------------------
+FROM deps AS build
+COPY . .
+RUN pnpm run build
+# Strip dev dependencies for a lean runtime node_modules.
+RUN --mount=type=cache,id=pnpm,target=/pnpm/store \
+    pnpm prune --prod
+
+# -------------------------------- runner -----------------------------------
+FROM node:${NODE_VERSION}-bookworm-slim AS runner
+ENV NODE_ENV=production
+ENV PORT=8080
+WORKDIR /app
+
+# Run as an unprivileged user.
+RUN groupadd --system --gid 1001 nodejs \
+    && useradd --system --uid 1001 --gid nodejs nodeapp
+
+COPY --from=base /usr/bin/dumb-init /usr/bin/dumb-init
+COPY --from=build --chown=nodeapp:nodejs /app/node_modules ./node_modules
+COPY --from=build --chown=nodeapp:nodejs /app/dist ./dist
+COPY --from=build --chown=nodeapp:nodejs /app/infrastructure-perf ./infrastructure-perf
+COPY --from=build --chown=nodeapp:nodejs /app/package.json ./package.json
+
+USER nodeapp
+EXPOSE 8080
+
+# Container-native healthcheck hits the gateway's /healthz endpoint.
+HEALTHCHECK --interval=30s --timeout=3s --start-period=20s --retries=3 \
+  CMD node -e "fetch('http://127.0.0.1:'+(process.env.PORT||8080)+'/healthz').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"
+
+ENTRYPOINT ["dumb-init", "--"]
+CMD ["node", "infrastructure-perf/api-gateway-redis/gateway.js"]
