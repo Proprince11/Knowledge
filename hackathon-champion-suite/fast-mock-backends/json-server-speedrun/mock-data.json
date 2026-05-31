@@ -1,0 +1,13 @@
+{
+  "users": [
+    { "id": 1, "name": "Ada Lovelace", "email": "ada@demo.dev", "role": "admin", "avatar": "https://i.pravatar.cc/100?img=1" },
+    { "id": 2, "name": "Alan Turing", "email": "alan@demo.dev", "role": "user", "avatar": "https://i.pravatar.cc/100?img=2" },
+    { "id": 3, "name": "Grace Hopper", "email": "grace@demo.dev", "role": "user", "avatar": "https://i.pravatar.cc/100?img=3" }
+  ],
+  "products": [
+    { "id": 1, "title": "Starter Plan", "priceCents": 0, "features": ["1 project", "Community support"] },
+    { "id": 2, "title": "Pro Plan", "priceCents": 1900, "features": ["Unlimited projects", "Priority support", "Analytics"] },
+    { "id": 3, "title": "Team Plan", "priceCents": 4900, "features": ["Everything in Pro", "5 seats", "SSO"] }
+  ],
+  "metrics": { "revenue": 48230, "activeUsers": 1284, "conversion": 3.7, "uptime": 99.98 }
+}
