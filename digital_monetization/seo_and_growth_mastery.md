@@ -170,7 +170,323 @@ audience capture · Reddit self-promo without contribution · too many / unscala
 churn · **undisclosed ads/affiliates (FTC violation)** · monetizing a community before earning
 trust · programmatic pages without per-page value · optimizing the lab score instead of field CWV.
 
-## 5. Resources
+## 5. Programmatic SEO — Reference Implementation
+
+### 5.1 Next.js ISR route (one static page per qualifying row)
+
+```tsx
+// app/[category]/[slug]/page.tsx — Incremental Static Regeneration
+import { notFound } from 'next/navigation';
+import type { Metadata } from 'next';
+
+export const revalidate = 86400; // re-generate at most once/day per page (freshness pipeline)
+export const dynamicParams = true; // allow on-demand generation for long-tail rows
+
+type Row = {
+  slug: string; category: string; title: string; updatedAt: string;
+  completeness: number; // 0..1 — the SUPPLY GATE input
+  metrics: Record<string, number>; sources: { name: string; url: string }[];
+};
+
+async function getRow(category: string, slug: string): Promise<Row | null> {
+  const res = await fetch(`${process.env.DATA_API}/rows/${category}/${slug}`, {
+    next: { revalidate },
+  });
+  return res.ok ? res.json() : null;
+}
+
+// Pre-render only rows above the value threshold; everything else is on-demand or noindex.
+export async function generateStaticParams() {
+  const rows: Row[] = await fetch(`${process.env.DATA_API}/rows?minCompleteness=0.7`).then(r => r.json());
+  return rows.map(r => ({ category: r.category, slug: r.slug }));
+}
+
+export async function generateMetadata({ params }: { params: { category: string; slug: string } }): Promise<Metadata> {
+  const row = await getRow(params.category, params.slug);
+  if (!row) return {};
+  const indexable = row.completeness >= 0.5; // GOVERNANCE: thin pages are noindex
+  return {
+    title: row.title,
+    alternates: { canonical: `https://example.com/${row.category}/${row.slug}` },
+    robots: indexable ? { index: true, follow: true } : { index: false, follow: true },
+  };
+}
+
+export default async function Page({ params }: { params: { category: string; slug: string } }) {
+  const row = await getRow(params.category, params.slug);
+  if (!row) notFound();
+  return <Article row={row} prose={composeProse(row)} jsonLd={buildJsonLd(row)} />;
+}
+```
+
+### 5.2 Data-derived unique prose (the anti-doorway requirement)
+
+Each sentence is **computed from the row's own numbers**, so no two pages share boilerplate:
+
+```ts
+// Deterministic prose from data => uniqueness without spinning/templated filler.
+function composeProse(row: Row): string {
+  const m = row.metrics;
+  const pctile = (v: number, all: number[]) =>
+    Math.round((all.filter(x => x <= v).length / all.length) * 100);
+  const parts: string[] = [];
+  if (m.price != null)
+    parts.push(`At $${m.price.toFixed(2)}, ${row.title} sits in the ${pctile(m.price, GLOBAL.prices)}th price percentile of ${row.category}.`);
+  if (m.score != null && m.categoryAvg != null)
+    parts.push(`Its score of ${m.score} is ${(m.score - m.categoryAvg >= 0 ? 'above' : 'below')} the category average (${m.categoryAvg}) by ${Math.abs(m.score - m.categoryAvg).toFixed(1)} points.`);
+  if (m.latencyMs != null)
+    parts.push(`Measured latency is ${m.latencyMs} ms (${m.latencyMs < 100 ? 'fast' : m.latencyMs < 300 ? 'average' : 'slow'} for this class).`);
+  return parts.join(' ');
+}
+```
+
+### 5.3 JSON-LD structured data (machine-readable trust + rich results)
+
+```ts
+function buildJsonLd(row: Row) {
+  return {
+    '@context': 'https://schema.org',
+    '@graph': [
+      {
+        '@type': 'BreadcrumbList',
+        itemListElement: [
+          { '@type': 'ListItem', position: 1, name: 'Home', item: 'https://example.com/' },
+          { '@type': 'ListItem', position: 2, name: row.category, item: `https://example.com/${row.category}` },
+          { '@type': 'ListItem', position: 3, name: row.title },
+        ],
+      },
+      {
+        '@type': 'Product',
+        name: row.title,
+        aggregateRating: row.metrics.score != null
+          ? { '@type': 'AggregateRating', ratingValue: row.metrics.score, bestRating: 100, ratingCount: row.metrics.reviews ?? 1 }
+          : undefined,
+        offers: row.metrics.price != null
+          ? { '@type': 'Offer', price: row.metrics.price, priceCurrency: 'USD', availability: 'https://schema.org/InStock' }
+          : undefined,
+      },
+      { '@type': 'Dataset', name: `${row.title} metrics`, dateModified: row.updatedAt,
+        creator: { '@type': 'Organization', name: 'Example' },
+        citation: row.sources.map(s => s.url) },
+    ],
+  };
+}
+// Inject as <script type="application/ld+json"> in the page <head>. Validate with Rich Results Test.
+```
+
+### 5.4 Sitemap-index generator (segmented, truthful `lastmod`)
+
+```ts
+// scripts/build-sitemaps.ts — child sitemaps capped at 50k URLs each + a master index.
+import { writeFileSync } from 'node:fs';
+const URLS_PER_FILE = 50_000;
+
+function chunk<T>(arr: T[], n: number): T[][] {
+  const out: T[][] = [];
+  for (let i = 0; i < arr.length; i += n) out.push(arr.slice(i, i + n));
+  return out;
+}
+
+export function buildSitemaps(rows: { loc: string; lastmod: string; indexable: boolean }[]) {
+  const indexable = rows.filter(r => r.indexable); // GOVERNANCE: never list noindex URLs
+  const groups = chunk(indexable, URLS_PER_FILE);
+  groups.forEach((g, i) => {
+    const body = g.map(u => `  <url><loc>${u.loc}</loc><lastmod>${u.lastmod}</lastmod></url>`).join('\n');
+    writeFileSync(`public/sitemap-${i}.xml`,
+      `<?xml version="1.0" encoding="UTF-8"?>\n<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">\n${body}\n</urlset>`);
+  });
+  const idx = groups.map((_, i) =>
+    `  <sitemap><loc>https://example.com/sitemap-${i}.xml</loc></sitemap>`).join('\n');
+  writeFileSync('public/sitemap.xml',
+    `<?xml version="1.0" encoding="UTF-8"?>\n<sitemapindex xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">\n${idx}\n</sitemapindex>`);
+}
+```
+
+### 5.5 Internal-linking graph (hub→spoke + sibling links that route authority)
+
+```ts
+// Build a directed link graph; each spoke links UP to its hub and laterally to k nearest siblings
+// (by feature distance). This distributes PageRank toward money pages and shortens click-depth.
+function relatedSiblings(target: Row, pool: Row[], k = 6): Row[] {
+  const dist = (a: Row, b: Row) =>
+    Object.keys(a.metrics).reduce((s, key) => s + (a.metrics[key] - (b.metrics[key] ?? 0)) ** 2, 0);
+  return pool
+    .filter(r => r.category === target.category && r.slug !== target.slug)
+    .sort((a, b) => dist(target, a) - dist(target, b))
+    .slice(0, k);
+}
+// Anchor text = the sibling's own title (descriptive, non-spammy). Never auto-link with exact-match
+// money keywords at scale — that pattern is a manipulative-linking signal.
+```
+
+## 6. Core Web Vitals — Raw Code Library
+
+### 6.1 Resource hints + LCP image (in `<head>`, before any render-blocking CSS)
+
+```html
+<link rel="preconnect" href="https://cdn.example.com" crossorigin>
+<link rel="preconnect" href="https://fonts.example.com" crossorigin>
+<link rel="preload" as="image" href="/hero.avif" fetchpriority="high"
+      imagesrcset="/hero-800.avif 800w, /hero-1600.avif 1600w" imagesizes="100vw">
+<link rel="preload" as="font" type="font/woff2" href="/inter.woff2" crossorigin>
+<style>/* critical, above-the-fold CSS inlined here */ @font-face{font-family:Inter;src:url(/inter.woff2) format("woff2");font-display:swap;size-adjust:100%}</style>
+<link rel="stylesheet" href="/rest.css" media="print" onload="this.media='all'"> <!-- non-blocking -->
+```
+
+```html
+<!-- The LCP element: explicit dimensions (no CLS), high priority, NEVER lazy-loaded. -->
+<img src="/hero-1600.avif" srcset="/hero-800.avif 800w, /hero-1600.avif 1600w" sizes="100vw"
+     width="1600" height="900" fetchpriority="high" decoding="async" alt="…">
+```
+
+### 6.2 INP — yield-to-main-thread scheduler (break long tasks)
+
+```js
+// Cooperative scheduler: runs a queue of work units, yielding so input stays responsive (<200ms).
+const yieldToMain = () =>
+  'scheduler' in window && 'yield' in scheduler ? scheduler.yield()
+  : new Promise(r => setTimeout(r, 0));
+
+async function runChunked(items, perItem, budgetMs = 50) {
+  let start = performance.now();
+  for (const item of items) {
+    perItem(item);
+    if (performance.now() - start > budgetMs) { // long task forming — yield
+      await yieldToMain();
+      start = performance.now();
+    }
+  }
+}
+
+// Offload genuinely heavy CPU work to a Worker so it never blocks interaction:
+const worker = new Worker('/work.js', { type: 'module' });
+function compute(payload) {
+  return new Promise(res => { worker.onmessage = e => res(e.data); worker.postMessage(payload); });
+}
+```
+
+### 6.3 CLS — read/write batching + reserved slots
+
+```js
+// Avoid layout thrashing: batch all reads, THEN all writes (one reflow instead of N).
+function reflowSafe(els) {
+  const widths = els.map(el => el.offsetWidth);      // READ phase
+  els.forEach((el, i) => { el.style.width = widths[i] / 2 + 'px'; }); // WRITE phase
+}
+```
+
+```css
+/* Reserve space for async UI (ads, embeds) so insertion shifts nothing. */
+.ad-slot { min-height: 280px; contain: layout size; }
+img, video, iframe { aspect-ratio: attr(width) / attr(height); height: auto; }
+.below-fold { content-visibility: auto; contain-intrinsic-size: 0 600px; } /* skip offscreen render */
+```
+
+### 6.4 Field measurement (RUM) — beacon real p75 to your analytics
+
+```js
+import { onLCP, onINP, onCLS, onTTFB } from 'web-vitals'; // v4 = INP (FID removed Mar 2024)
+function send(metric) {
+  navigator.sendBeacon('/vitals', JSON.stringify({
+    name: metric.name, value: metric.value, rating: metric.rating, id: metric.id,
+    path: location.pathname, conn: navigator.connection?.effectiveType,
+  }));
+}
+[onLCP, onINP, onCLS, onTTFB].forEach(fn => fn(send));
+// Aggregate server-side at the 75th percentile, segmented by template + device. Optimize FIELD, not lab.
+```
+
+## 7. Semantic Coverage — TF-IDF / BM25 Math & Gap Analysis
+
+"LSI keywords" is a misnomer; what works is **measurable topical completeness**. Quantify it.
+
+- **TF-IDF** weight of term *t* in document *d* across corpus *D*:
+
+  ```
+  tfidf(t,d) = tf(t,d) · log( |D| / (1 + df(t)) )
+  ```
+
+- **BM25** (what real search engines approximate) — saturates term frequency and normalizes by
+  document length `|d|` against average length `avgdl`:
+
+  ```
+  score(d,q) = Σ_t  IDF(t) · ( f(t,d)·(k1+1) ) / ( f(t,d) + k1·(1 − b + b·|d|/avgdl) )
+  IDF(t) = ln( 1 + (N − df(t) + 0.5) / (df(t) + 0.5) )
+  typical: k1 ∈ [1.2, 2.0],  b = 0.75
+  ```
+
+- **Content-gap algorithm:** compute TF-IDF vectors for the **top-10 ranking pages**, take the
+  centroid, subtract your draft's vector → the largest positive residual terms/entities are the
+  subtopics you are **missing**. Add H2/H3 sections to cover them — this is "semantic completeness,"
+  not synonym stuffing.
+
+```python
+# Content-gap finder: which salient terms do the SERP winners cover that my draft does not?
+from sklearn.feature_extraction.text import TfidfVectorizer
+import numpy as np
+
+def content_gaps(serp_docs: list[str], my_draft: str, top_k: int = 25) -> list[str]:
+    vec = TfidfVectorizer(ngram_range=(1, 2), stop_words="english", max_features=5000)
+    X = vec.fit_transform(serp_docs + [my_draft])
+    terms = np.array(vec.get_feature_names_out())
+    serp_centroid = np.asarray(X[:-1].mean(axis=0)).ravel()  # avg of ranking pages
+    mine = X[-1].toarray().ravel()
+    residual = serp_centroid - mine                          # positive => they cover, I don't
+    return list(terms[np.argsort(residual)[::-1][:top_k]])
+```
+
+## 8. Funnel Mathematics & Experimentation
+
+### 8.1 Cohort LTV / steady-state subscribers (geometric retention)
+
+For monthly churn `c`, a one-time cohort of `S₀` members yields lifetime months `Σ (1−c)^n = 1/c`,
+so **LTV = ARPU / c**. With constant monthly acquisition `A` and churn `c`, the subscriber base
+approaches a steady state:
+
+```
+S_∞ = A / c            (inflow = outflow at equilibrium)
+S_n = (A/c) · (1 − (1−c)^n)     (approach to steady state)
+```
+
+```python
+def mrr_projection(acq_per_month, churn, arpu, months):
+    S, out = 0.0, []
+    for _ in range(months):
+        S = S * (1 - churn) + acq_per_month   # survivors + new
+        out.append(S * arpu)
+    return out  # e.g. acq=30, churn=0.06, arpu=9 -> ~$4,500 MRR; churn=0.03 -> ~$9,000 MRR
+```
+
+### 8.2 A/B test sample size (two-proportion, the math behind "significance")
+
+To detect a lift from baseline `p` to `p+δ` at significance `α` and power `1−β`:
+
+```
+n per arm ≈ ( z_{1−α/2}·√(2·p̄·(1−p̄)) + z_{1−β}·√(p(1−p)+(p+δ)(1−p−δ)) )² / δ²
+two-sided α=0.05 → z=1.96 ;  power 0.80 → z=0.84 ;  p̄ = p + δ/2
+```
+
+```python
+from math import sqrt
+def ab_sample_size(p, mde_abs, alpha=0.05, power=0.80):
+    z_a, z_b = 1.959963985, 0.841621234           # z_{1-α/2}, z_{1-β}
+    p2, pbar = p + mde_abs, p + mde_abs / 2
+    n = (z_a*sqrt(2*pbar*(1-pbar)) + z_b*sqrt(p*(1-p) + p2*(1-p2)))**2 / mde_abs**2
+    return int(n) + 1   # per variant; multiply by arms, divide by daily traffic share => test days
+# Never call a test before reaching n. Judge on SESSION revenue + pages/session, not single-slot RPM.
+```
+
+### 8.3 Ad-yield identity (why over-monetizing loses money)
+
+```
+Session revenue = pages/session × ad density × fill rate × eCPM/1000
+```
+
+Pushing **ad density** up raises the third factor but degrades CWV (CLS/INP) and engagement, which
+shrinks **pages/session** *and* organic traffic. The optimum is interior, not maximal — find it by
+A/B testing density against **session revenue**, not slot RPM.
+
+## 9. Resources
 Google Search Central (spam policies, structured data) · web.dev (Core Web Vitals, INP guide) ·
 Chrome UX Report (CrUX) + Search Console · Lighthouse CI · Ahrefs / Semrush / Screaming Frog ·
 Mediavine / Raptive / Ezoic docs · Patreon & Ko-fi help centers (verify current fees) ·

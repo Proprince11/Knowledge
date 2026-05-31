@@ -588,6 +588,106 @@ cannot directly exfiltrate the session. It is **mitigation**, not prevention.
 
 ---
 
+## 5A. OWASP Top 10 — Cross-Site Request Forgery (CSRF)
+
+CSRF abuses **ambient authority**: the browser automatically attaches the victim's session
+cookie to *any* request to the target origin, including requests forged by an attacker-controlled
+page. If a state-changing endpoint trusts the cookie alone, an off-site `<form>` or `fetch` can
+act as the victim. CSRF is an *authorization-context* bug, not a code-injection bug — the payload
+is a perfectly well-formed request issued from the wrong place.
+
+### 5A.1 Preconditions (all three must hold)
+
+1. A state-changing action reachable with a **predictable** request shape.
+2. The action authenticates **only** via automatically-sent credentials (session cookie,
+   HTTP Basic, Windows-integrated auth).
+3. No unpredictable, per-request **anti-forgery token** is required and validated.
+
+Break any one precondition and the bug is gone. Modern defenses break #2 (`SameSite`) and #3
+(synchronizer/double-submit tokens) simultaneously.
+
+### 5A.2 Audit methodology (authorized scope only)
+
+```
+[ ] Inventory every state-changing endpoint (POST/PUT/PATCH/DELETE, and any GET that mutates).
+[ ] For each, capture a legitimate request in a proxy, then in a SEPARATE test account:
+    [ ] Remove the CSRF token (and any custom header). Does the action still succeed? -> finding.
+    [ ] Replay with a token from a DIFFERENT session. Accepted? -> token not bound to session.
+    [ ] Change Content-Type to text/plain / application/x-www-form-urlencoded (simple request,
+        no CORS preflight). Still accepted? -> only a custom-header check was protecting it.
+    [ ] Check Set-Cookie: is SameSite=Lax|Strict present on the session cookie?
+    [ ] Check whether a GET request can perform the mutation (always a finding).
+[ ] JSON APIs: confirm the server REQUIRES Content-Type application/json AND rejects cross-origin
+    requests (a forged form can only send "simple" content types, which triggers a preflight for
+    application/json — but only if the server actually enforces it).
+```
+
+A safe proof-of-concept for a report is an **HTML form on a benign page that targets your own
+test account** and demonstrates the unauthorized state change — never against another user.
+
+### 5A.3 Defense layers (defense-in-depth)
+
+| Layer | Mechanism | Notes |
+|---|---|---|
+| Cookie attribute | `SameSite=Lax` (default) or `Strict` | Stops most cross-site cookie attachment; `Lax` still allows top-level GET navigations |
+| Synchronizer token | Per-session random token in a hidden field, validated server-side | Strongest for classic form apps; requires server state |
+| Double-submit cookie | Token in both a cookie and a request header/field; server compares | Stateless; pair with HMAC-signing so it can't be forged |
+| Origin/Referer check | Validate `Origin`/`Sec-Fetch-Site` against an allowlist | Cheap secondary layer |
+| Re-authentication | Step-up auth / password confirm for sensitive actions | For money movement, email/password change |
+
+### 5A.4 Secure code remediation
+
+**Synchronizer token (Express, server-stored, HMAC-signed double-submit):**
+
+```js
+const crypto = require('crypto');
+const CSRF_SECRET = process.env.CSRF_SECRET; // >= 32 bytes, from a secrets manager
+
+function issueToken(sessionId) {
+  const nonce = crypto.randomBytes(16).toString('base64url');
+  const sig = crypto.createHmac('sha256', CSRF_SECRET).update(`${sessionId}.${nonce}`).digest('base64url');
+  return `${nonce}.${sig}`;
+}
+
+function verifyToken(sessionId, token) {
+  if (typeof token !== 'string' || !token.includes('.')) return false;
+  const [nonce, sig] = token.split('.');
+  const expected = crypto.createHmac('sha256', CSRF_SECRET).update(`${sessionId}.${nonce}`).digest('base64url');
+  // Constant-time comparison defeats timing oracles.
+  const a = Buffer.from(sig), b = Buffer.from(expected);
+  return a.length === b.length && crypto.timingSafeEqual(a, b);
+}
+
+// Enforce on all unsafe methods.
+const UNSAFE = new Set(['POST', 'PUT', 'PATCH', 'DELETE']);
+app.use((req, res, next) => {
+  if (!UNSAFE.has(req.method)) return next();
+  const token = req.get('X-CSRF-Token') || req.body?._csrf;
+  if (!verifyToken(req.session.id, token)) return res.status(403).json({ error: 'csrf_failed' });
+  next();
+});
+```
+
+**Cookie hardening (the cheap, high-impact baseline):**
+
+```
+Set-Cookie: sid=<value>; Secure; HttpOnly; SameSite=Lax; Path=/
+```
+
+**Django / Rails / Laravel / Spring Security ship CSRF protection on by default** — the real-world
+finding is almost always a developer who *disabled* it (e.g. `@csrf_exempt`, `protect_from_forgery`
+removed, `csrf().disable()`), or a JSON API that trusts the cookie without verifying `Content-Type`
+and `Origin`. **Remediation = re-enable the framework default and bind the token to the session.**
+
+### 5A.5 Common false positives
+
+- Endpoints that require a non-forgeable custom header *and* the server rejects simple requests —
+  the browser's CORS preflight already blocks the forgery.
+- Login/logout CSRF is lower severity but still report-worthy (login CSRF can fixate a session).
+- `GET` endpoints that are genuinely read-only are not CSRF-able for state change.
+
+---
+
 ## 6. OWASP Top 10 — Broken Authentication & Session Mgmt
 
 This category is now framed as "Identification & Authentication Failures" in OWASP Top 10

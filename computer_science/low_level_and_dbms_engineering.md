@@ -258,6 +258,263 @@ transactions short; lock in consistent order (avoid deadlocks); make retried wri
 
 ---
 
+## Module 4 — Advanced C/C++ Systems Programming
+
+### 4.1 Intrusive data structures + `container_of`
+
+Intrusive containers embed link nodes **inside** the payload struct → zero extra allocations, one
+cache line, O(1) splice. The Linux kernel pattern recovers the owner from an embedded member:
+
+```c
+#include <stddef.h>
+#define container_of(ptr, type, member) \
+    ((type *)((char *)(ptr) - offsetof(type, member)))
+
+typedef struct list_node { struct list_node *prev, *next; } list_node;
+
+typedef struct { int id; list_node link; } Task;   /* link is EMBEDDED, not a pointer */
+
+static inline void list_add(list_node *head, list_node *n) {
+    n->prev = head; n->next = head->next;
+    head->next->prev = n; head->next = n;           /* O(1), no malloc */
+}
+/* Recover the Task from its embedded node: */
+Task *t = container_of(node, Task, link);
+```
+
+### 4.2 Slab / fixed-size pool allocator (free-list, O(1) alloc & free)
+
+```c
+typedef struct slab {
+    void  *free_list;        /* singly-linked list of free cells (reuses cell memory) */
+    unsigned char *arena;    /* backing block */
+    size_t cell, cap, used;
+} Slab;
+
+int slab_init(Slab *s, void *mem, size_t bytes, size_t cell) {
+    if (cell < sizeof(void *)) cell = sizeof(void *);   /* must hold a next-pointer */
+    s->arena = mem; s->cell = cell; s->cap = bytes / cell; s->used = 0; s->free_list = NULL;
+    for (size_t i = 0; i < s->cap; i++) {               /* thread every cell onto the free list */
+        void **slot = (void **)(s->arena + i * cell);
+        *slot = s->free_list; s->free_list = slot;
+    }
+    return 0;
+}
+void *slab_alloc(Slab *s) {
+    if (!s->free_list) return NULL;
+    void **slot = s->free_list; s->free_list = *slot;   /* pop head — O(1) */
+    s->used++; return slot;
+}
+void slab_free(Slab *s, void *p) {
+    void **slot = p; *slot = s->free_list; s->free_list = slot;  /* push head — O(1) */
+    s->used--;
+}
+/* Pools eliminate fragmentation + per-alloc headers for hot, same-size objects (conns, events). */
+```
+
+### 4.3 Lock-free SPSC ring buffer (atomics + memory ordering)
+
+Single-producer/single-consumer queue with **acquire/release** ordering — no mutex, no CAS loop:
+
+```c
+#include <stdatomic.h>
+#include <stdint.h>
+typedef struct {
+    void   **buf;
+    size_t   mask;                 /* capacity is a power of two; index & mask wraps */
+    _Atomic size_t head, tail;     /* producer writes tail, consumer writes head */
+} SpscRing;
+
+int spsc_push(SpscRing *r, void *item) {
+    size_t t = atomic_load_explicit(&r->tail, memory_order_relaxed);
+    size_t h = atomic_load_explicit(&r->head, memory_order_acquire);  /* see consumer's progress */
+    if (((t + 1) & r->mask) == (h & r->mask)) return -1;              /* full */
+    r->buf[t & r->mask] = item;
+    atomic_store_explicit(&r->tail, t + 1, memory_order_release);     /* publish item, then index */
+    return 0;
+}
+int spsc_pop(SpscRing *r, void **out) {
+    size_t h = atomic_load_explicit(&r->head, memory_order_relaxed);
+    size_t t = atomic_load_explicit(&r->tail, memory_order_acquire);  /* see producer's publish */
+    if (h == t) return -1;                                            /* empty */
+    *out = r->buf[h & r->mask];
+    atomic_store_explicit(&r->head, h + 1, memory_order_release);
+    return 0;
+}
+/* release on the writer pairs with acquire on the reader => the item store is visible before the
+   index update is observed. Relaxed is safe for a thread's own index. */
+```
+
+### 4.4 Strict aliasing, `restrict`, and alignment
+
+- **Strict aliasing:** the compiler assumes pointers of *different* types don't alias; violating it
+  is UB. Type-pun via `memcpy` (optimized to a load) or a `union`, never via incompatible-pointer
+  casts.
+- **`restrict`** promises a pointer is the sole access path to its object → enables vectorization:
+
+```c
+void axpy(size_t n, float a, const float *restrict x, float *restrict y) {
+    for (size_t i = 0; i < n; i++) y[i] += a * x[i];   /* no aliasing => auto-vectorizes */
+}
+```
+
+- **Alignment:** `_Alignas`, `alignof`; misaligned access is slow or UB on some ISAs. Pad/align hot
+  structs to **64-byte cache lines** to prevent false sharing between cores.
+
+---
+
+## Module 5 — Managed-Runtime Internals (V8 & CPython)
+
+### 5.1 V8: hidden classes, inline caches, and deopt
+
+- **Hidden classes (Maps/Shapes):** V8 assigns objects with the *same property layout, added in the
+  same order* a shared hidden class → property access becomes a fixed offset load, not a hash lookup.
+- **Inline caches (ICs):** a call/property site caches the hidden class it saw → **monomorphic**
+  sites are fastest; **polymorphic** (2–4 shapes) slower; **megamorphic** falls back to the runtime.
+- **Rules that keep code fast:** initialize all fields in the constructor in a stable order; don't
+  add/delete properties later; keep arrays **packed** and **same-element-type** (avoid holes and
+  mixing ints/doubles/objects). Violations trigger **deoptimization** back to bytecode.
+
+```js
+// FAST: every Point shares one hidden class; field access is an offset load.
+class Point { constructor(x, y) { this.x = x; this.y = y; } }
+// SLOW: shape mutates after construction -> new hidden class -> IC churn -> deopt.
+const p = new Point(1, 2); p.z = 3; delete p.x;
+```
+
+- **GC:** generational. **Scavenger** (Cheney semi-space copy) collects the short-lived **young
+  generation** cheaply; survivors promote to **old space**, collected by **mark–sweep–compact**
+  (incremental + concurrent + parallel to bound pause time). Implication: short-lived allocations
+  are nearly free; long-lived churn is what costs you.
+
+### 5.2 CPython: object model, refcounting, cyclic GC, pymalloc
+
+- Everything is a heap `PyObject*` with a header `{ Py_ssize_t ob_refcnt; PyTypeObject *ob_type; }`.
+- **Reference counting** frees objects immediately at refcount 0 (deterministic), but **cannot
+  reclaim cycles** → a separate **generational cyclic GC** (3 generations) detects unreachable
+  cycles via reference traversal.
+- **pymalloc:** a pool/arena allocator for small objects (≤512 B) over 256 KiB arenas, size-class
+  pools — analogous to the slab allocator above. Large objects go straight to `malloc`.
+
+```python
+import sys, gc
+a = []; a.append(a)              # self-referential cycle
+print(sys.getrefcount(a))        # refcount (note: arg passing adds a temporary ref)
+del a; gc.collect()              # only the cyclic collector can reclaim the cycle
+```
+
+### 5.3 The GIL and the no-GIL future (precise)
+
+The CPython **GIL** serializes bytecode execution: one thread holds the interpreter lock at a time,
+so pure-Python CPU work does **not** scale across threads. The GIL is **released** during blocking
+I/O and inside many C extensions (NumPy, `hashlib`, compression) → threads *do* help those.
+**PEP 703** adds an experimental **free-threaded** build (3.13+, `--disable-gil`) using biased
+reference counting + per-object locks; default builds still ship the GIL.
+
+| Symptom | Diagnosis | Fix |
+|---|---|---|
+| 8 threads, ~1 core of throughput, CPU-bound | GIL contention | `ProcessPoolExecutor` / native lib |
+| Threads help, then plateau | I/O releases GIL but CPU section serializes | move CPU work to processes |
+| `asyncio` app stalls on one request | a blocking call inside a coroutine | `loop.run_in_executor` |
+
+---
+
+## Module 6 — Storage Engine & Query Optimizer Internals
+
+### 6.1 B+Tree geometry (why lookups are 3–4 I/Os on billions of rows)
+
+For page size `P`, key+pointer size `k`, the **fanout** `f ≈ P / k`. A tree of `N` keys has height:
+
+```
+h = ⌈ log_f (N) ⌉           leaves hold data (B+Tree); internal nodes hold separators only
+```
+
+With `P = 8 KiB` and `k ≈ 16 B`, `f ≈ 512`, so `h = 3` indexes ~`512³ ≈ 1.34×10⁸` rows in **3 page
+reads** (root + internal are usually cached → effectively 1 physical I/O). B+Tree (vs B-Tree) chains
+leaves in a linked list → **range scans** and `ORDER BY` walk leaves sequentially.
+
+### 6.2 LSM-trees & the amplification trade-offs (RocksDB/Cassandra)
+
+Writes buffer in an in-memory **memtable** → flushed as immutable sorted **SSTables** → merged by
+**compaction**. Three amplifications govern the design:
+
+```
+Write amplification  WA ≈ levels × fan-out           (each byte rewritten during compaction)
+Read amplification   RA ≈ #SSTables checked          (mitigated by Bloom filters per SSTable)
+Space amplification  SA ≈ extra copies before merge
+Leveled compaction  -> low SA/RA, high WA   |   Tiered -> low WA, high SA/RA
+```
+
+B+Tree = read-optimized, in-place (update-heavy OLTP); LSM = write-optimized, append-only
+(ingest-heavy, time-series). A **Bloom filter** ("probably present / definitely absent",
+false-positive rate `≈ (1 − e^{−kn/m})^k`) lets an LSM skip SSTables that can't hold the key.
+
+### 6.3 Cost-based optimizer — selectivity, cardinality, join ordering
+
+The planner enumerates plans and scores each by an estimated **cost** = `cpu_cost + io_cost`,
+driven by **cardinality estimates** from histograms (`ANALYZE`):
+
+```
+selectivity(col = c)        ≈ 1 / n_distinct(col)        (uniform assumption)
+selectivity(col < c)        ≈ (c − min) / (max − min)    (refined by histogram buckets)
+selectivity(P_a AND P_b)    ≈ s_a · s_b                  (independence assumption — often wrong!)
+rows_out = rows_in · selectivity
+```
+
+Bad row estimates (correlated predicates, skew, stale stats) are the #1 cause of catastrophic plans
+(a Nested Loop chosen because the inner side was estimated at 5 rows but returns 5 million). Fixes:
+`ANALYZE`, extended statistics (`CREATE STATISTICS` for correlated columns), or query restructuring.
+
+**Join ordering** is combinatorial; optimizers use **dynamic programming** (System-R style) over
+subsets for small joins and **greedy/genetic** search beyond a threshold (e.g. Postgres
+`geqo_threshold`):
+
+```
+bestPlan(S) = min over split (S = L ∪ R) of  cost(bestPlan(L) ⋈ bestPlan(R))
+join algos: Nested Loop (good w/ index on inner, few outer rows) |
+            Hash Join (large unsorted equi-joins) | Merge Join (pre-sorted / indexed inputs)
+```
+
+### 6.4 MVCC and isolation anomalies (what each level actually prevents)
+
+PostgreSQL MVCC keeps **row versions** (`xmin`/`xmax`); a snapshot sees versions committed before it
+→ **readers never block writers**. `VACUUM` reclaims dead tuples.
+
+| Isolation | Dirty read | Non-repeatable read | Phantom | Write skew |
+|---|---|---|---|---|
+| Read Committed | ✗ prevented | possible | possible | possible |
+| Repeatable Read (PG: snapshot) | ✗ | ✗ | ✗ (in PG) | possible |
+| Serializable (PG: SSI) | ✗ | ✗ | ✗ | ✗ prevented |
+
+Higher isolation = fewer anomalies, more aborts/retries → **make writes idempotent and retry on
+`40001` serialization failures**.
+
+### 6.5 Durability: WAL + checkpoints
+
+Write-Ahead Logging: the log record is `fsync`-ed **before** the data page is written (the "D" in
+ACID). Commit = log flushed. **Checkpoints** periodically flush dirty pages and advance the redo
+point, bounding crash-recovery time. Group commit batches `fsync`s to amortize disk latency.
+
+### 6.6 Scaling: partitioning, sharding, and pool sizing
+
+- **Partitioning** (one DB): range/list/hash partitions enable **partition pruning** (planner skips
+  irrelevant partitions) and cheap bulk drops of old data.
+- **Sharding** (many DBs): horizontal split by a **shard key**; choose a key with even distribution
+  and that co-locates joined data. Cross-shard joins/transactions are the cost.
+- **Connection pool sizing** via **Little's Law** — `L = λ · W` (concurrency = arrival rate ×
+  service time). A pool far larger than `cores × (1 + wait/compute)` just adds context-switching and
+  lock contention; size it from measured `W`, then load-test.
+
+```sql
+-- Range partitioning with automatic pruning on the partition key.
+CREATE TABLE events (id bigint, ts timestamptz NOT NULL, payload jsonb) PARTITION BY RANGE (ts);
+CREATE TABLE events_2026_05 PARTITION OF events
+  FOR VALUES FROM ('2026-05-01') TO ('2026-06-01');
+-- WHERE ts >= '2026-05-10' scans only events_2026_05 (the planner prunes the rest).
+```
+
+---
+
 ## Cross-references
 
 `../03-computer-science-architecture/c-masterclass.md` ·
