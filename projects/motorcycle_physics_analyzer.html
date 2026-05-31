@@ -1,0 +1,423 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Motorcycle Dynamic Load Analyzer</title>
+<style>
+*{margin:0;padding:0;box-sizing:border-box;}
+body{background:#1a1a2e;color:#e0e0e0;font-family:'Segoe UI',sans-serif;min-height:100vh;}
+h1{text-align:center;padding:18px 0 10px;font-size:1.8rem;color:#00d4ff;text-transform:uppercase;letter-spacing:3px;border-bottom:2px solid #00d4ff33;margin-bottom:10px;}
+.layout{display:grid;grid-template-columns:280px 1fr 300px;gap:12px;padding:10px 14px;height:calc(100vh - 80px);}
+.panel{background:#0f0f23;border:1px solid #333;border-radius:8px;padding:14px;overflow-y:auto;}
+.panel h2{font-size:0.95rem;color:#00d4ff;margin-bottom:12px;text-transform:uppercase;letter-spacing:1px;border-bottom:1px solid #00d4ff44;padding-bottom:6px;}
+.control-group{margin-bottom:14px;}
+.control-group label{display:block;font-size:0.78rem;color:#aaa;margin-bottom:3px;}
+.control-group .val{float:right;color:#00d4ff;font-family:'Courier New',monospace;font-weight:bold;}
+input[type="range"]{width:100%;height:6px;-webkit-appearance:none;background:#333;border-radius:3px;outline:none;margin-top:4px;}
+input[type="range"]::-webkit-slider-thumb{-webkit-appearance:none;width:14px;height:14px;background:#00d4ff;border-radius:50%;cursor:pointer;}
+input[type="range"]::-moz-range-thumb{width:14px;height:14px;background:#00d4ff;border-radius:50%;cursor:pointer;border:none;}
+select{width:100%;background:#1a1a2e;color:#e0e0e0;border:1px solid #444;padding:6px 8px;border-radius:4px;font-size:0.85rem;margin-top:4px;}
+.canvas-wrap{display:flex;align-items:center;justify-content:center;background:#0a0a1a;border:1px solid #333;border-radius:8px;overflow:hidden;}
+canvas{display:block;width:100%;height:100%;}
+.telemetry-row{display:flex;justify-content:space-between;align-items:center;padding:6px 0;border-bottom:1px solid #222;font-family:'Courier New',monospace;font-size:0.8rem;}
+.telemetry-row .tl{color:#888;font-size:0.72rem;}
+.telemetry-row .tv{color:#fff;font-weight:bold;}
+.risk-bar{height:8px;border-radius:4px;background:#333;margin-top:4px;overflow:hidden;}
+.risk-bar-fill{height:100%;border-radius:4px;transition:width 0.15s,background 0.15s;}
+.warn-section{margin-top:10px;padding:8px;border-radius:4px;border:1px solid #444;}
+.green{color:#4caf50;} .yellow{color:#ffeb3b;} .red{color:#f44336;}
+.bg-green{background:#4caf50;} .bg-yellow{background:#ffeb3b;} .bg-red{background:#f44336;}
+</style>
+</head>
+<body>
+<h1>Motorcycle Dynamic Load Analyzer</h1>
+<div class="layout">
+<div class="panel" id="controls-panel">
+<h2>Controls</h2>
+<div class="control-group">
+<label>Bike Base Mass <span class="val" id="v-bike-mass">220 kg</span></label>
+<input type="range" id="bike-mass" min="150" max="350" value="220" step="1">
+</div>
+<div class="control-group">
+<label>Rider Mass <span class="val" id="v-rider-mass">80 kg</span></label>
+<input type="range" id="rider-mass" min="50" max="120" value="80" step="1">
+</div>
+<div class="control-group">
+<label>Luggage Weight <span class="val" id="v-luggage-mass">20 kg</span></label>
+<input type="range" id="luggage-mass" min="0" max="80" value="20" step="1">
+</div>
+<div class="control-group">
+<label>Luggage Position <span class="val" id="v-luggage-pos">1200 mm</span></label>
+<input type="range" id="luggage-pos" min="200" max="1600" value="1200" step="10">
+</div>
+<div class="control-group">
+<label>Surface Incline <span class="val" id="v-incline">0 deg</span></label>
+<input type="range" id="incline" min="-45" max="45" value="0" step="0.5">
+</div>
+<div class="control-group">
+<label>Terrain Surface</label>
+<select id="terrain">
+<option value="0.85">Asphalt (dry) - mu 0.85</option>
+<option value="0.55">Asphalt (wet) - mu 0.55</option>
+<option value="0.45">Gravel - mu 0.45</option>
+<option value="0.30">Sand - mu 0.30</option>
+<option value="0.20">Mud - mu 0.20</option>
+</select>
+</div>
+</div>
+<div class="canvas-wrap">
+<canvas id="viz"></canvas>
+</div>
+<div class="panel" id="telemetry-panel">
+<h2>Telemetry</h2>
+<div id="telemetry-data"></div>
+</div>
+</div>
+<script>
+(function(){
+const G = 9.81;
+const WHEELBASE = 1500;
+const BIKE_COM_X = 750;
+const BIKE_COM_H = 550;
+const RIDER_X = 850;
+const RIDER_H = 900;
+const WHEEL_RADIUS = 330;
+
+const sliders = {
+  bikeMass: document.getElementById('bike-mass'),
+  riderMass: document.getElementById('rider-mass'),
+  luggageMass: document.getElementById('luggage-mass'),
+  luggagePos: document.getElementById('luggage-pos'),
+  incline: document.getElementById('incline'),
+};
+const terrainSel = document.getElementById('terrain');
+const canvas = document.getElementById('viz');
+const ctx = canvas.getContext('2d');
+const telDiv = document.getElementById('telemetry-data');
+
+function getParams(){
+  const mBike = +sliders.bikeMass.value;
+  const mRider = +sliders.riderMass.value;
+  const mLug = +sliders.luggageMass.value;
+  const xLug = +sliders.luggagePos.value;
+  const theta = +sliders.incline.value;
+  const mu = +terrainSel.value;
+  return {mBike, mRider, mLug, xLug, theta, mu};
+}
+
+function compute(p){
+  const mTotal = p.mBike + p.mRider + p.mLug;
+  const xCom = (p.mBike * BIKE_COM_X + p.mRider * RIDER_X + p.mLug * p.xLug) / mTotal;
+  const hCom = (p.mBike * BIKE_COM_H + p.mRider * RIDER_H + p.mLug * 600) / mTotal;
+  const thetaRad = p.theta * Math.PI / 180;
+  const cosT = Math.cos(thetaRad);
+  const sinT = Math.sin(thetaRad);
+  const Fr = (mTotal * G * (xCom / 1000 * cosT + hCom / 1000 * sinT)) / (WHEELBASE / 1000);
+  const Ff = mTotal * G * cosT - Fr;
+  const tractionFront = Ff * p.mu;
+  const tractionRear = Fr * p.mu;
+  const maxNormal = mTotal * G;
+  let wheelieRisk = 0;
+  if(Ff <= 0) wheelieRisk = 100;
+  else wheelieRisk = Math.max(0, (1 - Ff / (maxNormal * 0.5)) * 100);
+  wheelieRisk = Math.min(100, Math.max(0, wheelieRisk));
+  let stoppieRisk = 0;
+  if(Fr <= 0) stoppieRisk = 100;
+  else stoppieRisk = Math.max(0, (1 - Fr / (maxNormal * 0.5)) * 100);
+  stoppieRisk = Math.min(100, Math.max(0, stoppieRisk));
+  return {mTotal, xCom, hCom, Ff, Fr, tractionFront, tractionRear, wheelieRisk, stoppieRisk, thetaRad};
+}
+
+function riskColor(v){
+  if(v < 40) return 'green';
+  if(v < 70) return 'yellow';
+  return 'red';
+}
+
+function updateLabels(p){
+  document.getElementById('v-bike-mass').textContent = p.mBike + ' kg';
+  document.getElementById('v-rider-mass').textContent = p.mRider + ' kg';
+  document.getElementById('v-luggage-mass').textContent = p.mLug + ' kg';
+  document.getElementById('v-luggage-pos').textContent = p.xLug + ' mm';
+  document.getElementById('v-incline').textContent = p.theta + ' deg';
+}
+
+function updateTelemetry(d, p){
+  const totalW = d.mTotal * G;
+  const ffPct = (d.Ff / totalW * 100).toFixed(1);
+  const frPct = (d.Fr / totalW * 100).toFixed(1);
+  const wRiskCls = riskColor(d.wheelieRisk);
+  const sRiskCls = riskColor(d.stoppieRisk);
+  telDiv.innerHTML = `
+    <div class="telemetry-row"><span class="tl">Front Axle Load</span><span class="tv">${d.Ff.toFixed(1)} N (${ffPct}%)</span></div>
+    <div class="telemetry-row"><span class="tl">Rear Axle Load</span><span class="tv">${d.Fr.toFixed(1)} N (${frPct}%)</span></div>
+    <div class="telemetry-row"><span class="tl">Weight Bias (F/R)</span><span class="tv">${Math.max(0,+ffPct).toFixed(0)}% / ${Math.max(0,+frPct).toFixed(0)}%</span></div>
+    <div class="telemetry-row"><span class="tl">CoM Position</span><span class="tv">${d.xCom.toFixed(1)} mm</span></div>
+    <div class="telemetry-row"><span class="tl">CoM Height</span><span class="tv">${d.hCom.toFixed(1)} mm</span></div>
+    <div class="telemetry-row"><span class="tl">Traction Margin (F)</span><span class="tv">${d.tractionFront.toFixed(1)} N</span></div>
+    <div class="telemetry-row"><span class="tl">Traction Margin (R)</span><span class="tv">${d.tractionRear.toFixed(1)} N</span></div>
+    <div class="telemetry-row"><span class="tl">Total System Mass</span><span class="tv">${d.mTotal.toFixed(1)} kg</span></div>
+    <div class="telemetry-row"><span class="tl">Gravitational Force</span><span class="tv">${totalW.toFixed(1)} N</span></div>
+    <div class="warn-section">
+      <div class="telemetry-row"><span class="tl">Wheelie Risk</span><span class="tv ${wRiskCls}">${d.wheelieRisk.toFixed(1)}%</span></div>
+      <div class="risk-bar"><div class="risk-bar-fill bg-${wRiskCls}" style="width:${d.wheelieRisk}%"></div></div>
+      <div class="telemetry-row" style="margin-top:8px"><span class="tl">Stoppie Risk</span><span class="tv ${sRiskCls}">${d.stoppieRisk.toFixed(1)}%</span></div>
+      <div class="risk-bar"><div class="risk-bar-fill bg-${sRiskCls}" style="width:${d.stoppieRisk}%"></div></div>
+    </div>
+  `;
+}
+
+function resizeCanvas(){
+  const wrap = canvas.parentElement;
+  canvas.width = wrap.clientWidth;
+  canvas.height = wrap.clientHeight;
+}
+
+function drawScene(d, p){
+  resizeCanvas();
+  const W = canvas.width;
+  const H = canvas.height;
+  ctx.clearRect(0, 0, W, H);
+  ctx.save();
+  ctx.translate(W/2, H/2);
+  const scale = Math.min(W, H) / 700;
+  ctx.scale(scale, scale);
+  const angle = -d.thetaRad;
+  // Draw ground
+  ctx.save();
+  ctx.rotate(angle);
+  ctx.strokeStyle = '#555';
+  ctx.lineWidth = 2;
+  ctx.beginPath();
+  ctx.moveTo(-400, 160);
+  ctx.lineTo(400, 160);
+  ctx.stroke();
+  // Hatch marks
+  ctx.strokeStyle = '#333';
+  ctx.lineWidth = 1;
+  for(let i = -400; i < 400; i += 30){
+    ctx.beginPath();
+    ctx.moveTo(i, 160);
+    ctx.lineTo(i - 10, 175);
+    ctx.stroke();
+  }
+  ctx.restore();
+  // Bike group rotated with incline
+  ctx.save();
+  ctx.rotate(angle);
+  const bikeScale = 0.18;
+  const groundY = 160;
+  const wheelR = WHEEL_RADIUS * bikeScale;
+  const wb = WHEELBASE * bikeScale;
+  const rearX = -wb / 2;
+  const frontX = wb / 2;
+  const axleY = groundY - wheelR;
+  // Wheels
+  function drawWheel(cx, cy, r){
+    ctx.strokeStyle = '#ccc';
+    ctx.lineWidth = 3;
+    ctx.beginPath();
+    ctx.arc(cx, cy, r, 0, Math.PI * 2);
+    ctx.stroke();
+    // Tire
+    ctx.strokeStyle = '#666';
+    ctx.lineWidth = 6;
+    ctx.beginPath();
+    ctx.arc(cx, cy, r, 0, Math.PI * 2);
+    ctx.stroke();
+    // Spokes
+    ctx.strokeStyle = '#888';
+    ctx.lineWidth = 1;
+    for(let a = 0; a < Math.PI * 2; a += Math.PI / 6){
+      ctx.beginPath();
+      ctx.moveTo(cx, cy);
+      ctx.lineTo(cx + Math.cos(a) * r * 0.85, cy + Math.sin(a) * r * 0.85);
+      ctx.stroke();
+    }
+    // Hub
+    ctx.fillStyle = '#aaa';
+    ctx.beginPath();
+    ctx.arc(cx, cy, r * 0.12, 0, Math.PI * 2);
+    ctx.fill();
+  }
+  drawWheel(rearX, axleY, wheelR);
+  drawWheel(frontX, axleY, wheelR);
+  // Frame
+  const seatTopY = axleY - wheelR * 2.2;
+  const seatRearX = rearX + wb * 0.15;
+  const seatFrontX = rearX + wb * 0.55;
+  const steeringX = frontX - wb * 0.05;
+  const steeringTopY = axleY - wheelR * 2.8;
+  ctx.strokeStyle = '#00d4ff';
+  ctx.lineWidth = 3;
+  // Main frame triangle
+  ctx.beginPath();
+  ctx.moveTo(rearX, axleY);
+  ctx.lineTo(seatRearX, seatTopY);
+  ctx.lineTo(steeringX, seatTopY + wheelR * 0.3);
+  ctx.lineTo(frontX, axleY + wheelR * 0.3);
+  ctx.stroke();
+  // Down tube
+  ctx.beginPath();
+  ctx.moveTo(rearX, axleY);
+  ctx.lineTo(steeringX, seatTopY + wheelR * 0.3);
+  ctx.stroke();
+  // Rear swingarm
+  ctx.strokeStyle = '#0099bb';
+  ctx.lineWidth = 3;
+  ctx.beginPath();
+  ctx.moveTo(rearX + wb * 0.2, axleY - wheelR * 0.5);
+  ctx.lineTo(rearX, axleY);
+  ctx.stroke();
+  // Front forks
+  ctx.strokeStyle = '#cccccc';
+  ctx.lineWidth = 2.5;
+  ctx.beginPath();
+  ctx.moveTo(steeringX, seatTopY + wheelR * 0.3);
+  ctx.lineTo(frontX, axleY);
+  ctx.stroke();
+  ctx.beginPath();
+  ctx.moveTo(steeringX + 4, seatTopY + wheelR * 0.3);
+  ctx.lineTo(frontX + 4, axleY);
+  ctx.stroke();
+  // Handlebars
+  ctx.strokeStyle = '#ddd';
+  ctx.lineWidth = 3;
+  ctx.beginPath();
+  ctx.moveTo(steeringX - 15, steeringTopY + wheelR * 1.2);
+  ctx.lineTo(steeringX + 15, steeringTopY + wheelR * 1.2);
+  ctx.stroke();
+  // Handlebar stem
+  ctx.beginPath();
+  ctx.moveTo(steeringX, seatTopY + wheelR * 0.3);
+  ctx.lineTo(steeringX, steeringTopY + wheelR * 1.2);
+  ctx.stroke();
+  // Seat
+  ctx.fillStyle = '#444';
+  ctx.beginPath();
+  ctx.moveTo(seatRearX - 5, seatTopY);
+  ctx.lineTo(seatFrontX + 10, seatTopY + 5);
+  ctx.lineTo(seatFrontX + 10, seatTopY + 12);
+  ctx.lineTo(seatRearX - 5, seatTopY + 12);
+  ctx.closePath();
+  ctx.fill();
+  // Engine block (rectangle)
+  ctx.fillStyle = '#333';
+  ctx.strokeStyle = '#555';
+  ctx.lineWidth = 1;
+  const engX = rearX + wb * 0.25;
+  const engY = axleY - wheelR * 0.8;
+  ctx.fillRect(engX, engY, wb * 0.25, wheelR * 0.9);
+  ctx.strokeRect(engX, engY, wb * 0.25, wheelR * 0.9);
+  // Exhaust
+  ctx.strokeStyle = '#777';
+  ctx.lineWidth = 2;
+  ctx.beginPath();
+  ctx.moveTo(engX + wb * 0.25, engY + wheelR * 0.6);
+  ctx.quadraticCurveTo(rearX + wb * 0.6, axleY + wheelR * 0.2, rearX - 10, axleY - wheelR * 0.2);
+  ctx.stroke();
+  // CoM marker
+  const comXpx = rearX + (d.xCom / WHEELBASE) * wb;
+  const comYpx = axleY - (d.hCom * bikeScale);
+  ctx.fillStyle = '#ff6600';
+  ctx.beginPath();
+  ctx.arc(comXpx, comYpx, 7, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.strokeStyle = '#ffaa00';
+  ctx.lineWidth = 2;
+  ctx.beginPath();
+  ctx.arc(comXpx, comYpx, 10, 0, Math.PI * 2);
+  ctx.stroke();
+  ctx.fillStyle = '#fff';
+  ctx.font = '9px monospace';
+  ctx.fillText('CoM', comXpx - 10, comYpx - 14);
+  // Force arrows
+  const forceScale = 0.015;
+  const totalW = d.mTotal * G;
+  // Gravity vector (red) - points down in world frame, so rotated relative to bike
+  const gravLen = totalW * forceScale;
+  ctx.save();
+  ctx.translate(comXpx, comYpx);
+  ctx.rotate(-angle); // undo bike rotation to point straight down in world
+  ctx.strokeStyle = '#ff3333';
+  ctx.lineWidth = 3;
+  ctx.beginPath();
+  ctx.moveTo(0, 0);
+  ctx.lineTo(0, gravLen);
+  ctx.stroke();
+  // Arrowhead
+  ctx.fillStyle = '#ff3333';
+  ctx.beginPath();
+  ctx.moveTo(0, gravLen);
+  ctx.lineTo(-5, gravLen - 10);
+  ctx.lineTo(5, gravLen - 10);
+  ctx.closePath();
+  ctx.fill();
+  ctx.fillStyle = '#ff3333';
+  ctx.font = '9px monospace';
+  ctx.fillText('mg', 6, gravLen - 5);
+  ctx.restore();
+  // Normal force arrows (perpendicular to ground surface = straight up in bike frame)
+  const ffLen = Math.max(0, d.Ff) * forceScale;
+  const frLen = Math.max(0, d.Fr) * forceScale;
+  // Front normal (green)
+  if(ffLen > 0){
+    ctx.strokeStyle = '#4caf50';
+    ctx.lineWidth = 3;
+    ctx.beginPath();
+    ctx.moveTo(frontX, groundY);
+    ctx.lineTo(frontX, groundY - ffLen);
+    ctx.stroke();
+    ctx.fillStyle = '#4caf50';
+    ctx.beginPath();
+    ctx.moveTo(frontX, groundY - ffLen);
+    ctx.lineTo(frontX - 5, groundY - ffLen + 10);
+    ctx.lineTo(frontX + 5, groundY - ffLen + 10);
+    ctx.closePath();
+    ctx.fill();
+    ctx.font = '9px monospace';
+    ctx.fillText('Ff', frontX + 7, groundY - ffLen + 5);
+  }
+  // Rear normal (blue)
+  if(frLen > 0){
+    ctx.strokeStyle = '#42a5f5';
+    ctx.lineWidth = 3;
+    ctx.beginPath();
+    ctx.moveTo(rearX, groundY);
+    ctx.lineTo(rearX, groundY - frLen);
+    ctx.stroke();
+    ctx.fillStyle = '#42a5f5';
+    ctx.beginPath();
+    ctx.moveTo(rearX, groundY - frLen);
+    ctx.lineTo(rearX - 5, groundY - frLen + 10);
+    ctx.lineTo(rearX + 5, groundY - frLen + 10);
+    ctx.closePath();
+    ctx.fill();
+    ctx.font = '9px monospace';
+    ctx.fillText('Fr', rearX + 7, groundY - frLen + 5);
+  }
+  ctx.restore();
+  // Legend
+  ctx.restore();
+  ctx.fillStyle = '#888';
+  ctx.font = '11px monospace';
+  ctx.fillText('Red=Gravity  Green=Ff  Blue=Fr  Orange=CoM', 10, H - 10);
+}
+
+function update(){
+  const p = getParams();
+  updateLabels(p);
+  const d = compute(p);
+  updateTelemetry(d, p);
+  drawScene(d, p);
+}
+
+Object.values(sliders).forEach(s => s.addEventListener('input', update));
+terrainSel.addEventListener('change', update);
+window.addEventListener('resize', update);
+update();
+})();
+</script>
+</body>
+</html>
