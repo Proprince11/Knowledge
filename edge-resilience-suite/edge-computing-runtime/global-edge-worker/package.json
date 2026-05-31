@@ -1,0 +1,8 @@
+{
+  "name": "global-edge-worker",
+  "version": "1.0.0",
+  "description": "V8 isolate edge worker (ES module). Geographic routing, request rewrite hooks, canary splitting, and origin failover using only web-standard APIs.",
+  "type": "module",
+  "main": "edge-router.js",
+  "private": true
+}
