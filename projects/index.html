@@ -1,0 +1,318 @@
+<!DOCTYPE html>
+<html lang="en" class="dark">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1.0">
+<title>Portfolio Dashboard — 50 Tools & Algorithmic Games</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<script>
+tailwind.config = {
+  darkMode: 'class',
+  theme: {
+    extend: {
+      colors: {
+        surface: { 900: '#0f1117', 800: '#161922', 700: '#1e2231', 600: '#272d3f' },
+        accent: { blue: '#3b82f6', purple: '#8b5cf6', green: '#10b981', orange: '#f59e0b', pink: '#ec4899', cyan: '#06b6d4' }
+      },
+      fontFamily: { mono: ['JetBrains Mono', 'Fira Code', 'monospace'], sans: ['Inter', 'system-ui', 'sans-serif'] }
+    }
+  }
+};
+</script>
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap');
+*{scrollbar-width:thin;scrollbar-color:#3b82f6 #161922}
+::-webkit-scrollbar{width:6px;height:6px}
+::-webkit-scrollbar-track{background:#161922}
+::-webkit-scrollbar-thumb{background:#3b82f6;border-radius:3px}
+body{background:#0f1117;color:#e2e8f0;font-family:'Inter',system-ui,sans-serif}
+.card-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(340px,1fr));gap:1.25rem}
+@media(max-width:768px){.card-grid{grid-template-columns:1fr}}
+.card{background:linear-gradient(135deg,#161922 0%,#1e2231 100%);border:1px solid #272d3f;border-radius:.75rem;padding:1.5rem;transition:all .2s ease;position:relative;overflow:hidden}
+.card:hover{border-color:#3b82f6;transform:translateY(-2px);box-shadow:0 8px 32px rgba(59,130,246,.12)}
+.card::before{content:'';position:absolute;top:0;left:0;right:0;height:3px;background:var(--cat-color);opacity:0;transition:opacity .2s}
+.card:hover::before{opacity:1}
+.pill{display:inline-flex;align-items:center;padding:.25rem .75rem;border-radius:9999px;font-size:.75rem;font-weight:500;cursor:pointer;transition:all .15s;border:1px solid transparent}
+.pill.active{border-color:currentColor;box-shadow:0 0 12px currentColor}
+.badge{display:inline-block;padding:.125rem .5rem;border-radius:.25rem;font-size:.65rem;font-weight:600;text-transform:uppercase;letter-spacing:.05em}
+.stat-card{background:linear-gradient(135deg,#161922,#1e2231);border:1px solid #272d3f;border-radius:.5rem;padding:1rem 1.25rem}
+.tag{display:inline-block;padding:.125rem .375rem;background:#272d3f;border-radius:.25rem;font-size:.65rem;color:#94a3b8;margin:.125rem}
+.search-input{background:#161922;border:1px solid #272d3f;border-radius:.5rem;padding:.625rem 1rem .625rem 2.5rem;color:#e2e8f0;width:100%;transition:border-color .2s}
+.search-input:focus{outline:none;border-color:#3b82f6;box-shadow:0 0 0 3px rgba(59,130,246,.1)}
+.select-input{background:#161922;border:1px solid #272d3f;border-radius:.5rem;padding:.5rem .75rem;color:#e2e8f0;appearance:none;cursor:pointer}
+.select-input:focus{outline:none;border-color:#3b82f6}
+.fade-in{animation:fadeIn .3s ease}
+@keyframes fadeIn{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:translateY(0)}}
+.counter{font-variant-numeric:tabular-nums}
+</style>
+</head>
+<body class="min-h-screen">
+
+
+<!-- Header -->
+<header class="sticky top-0 z-50 backdrop-blur-md bg-surface-900/80 border-b border-surface-600">
+  <div class="max-w-[1600px] mx-auto px-4 sm:px-6 py-4 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
+    <div class="flex items-center gap-3">
+      <div class="w-9 h-9 rounded-lg bg-gradient-to-br from-accent-blue to-accent-purple flex items-center justify-center">
+        <svg class="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2V6zm10 0a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2V6zM4 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2v-2zm10 0a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2v-2z"/></svg>
+      </div>
+      <div>
+        <h1 class="text-lg font-bold text-white tracking-tight">Portfolio Dashboard</h1>
+        <p class="text-xs text-slate-400">50 Tools & Algorithmic Games</p>
+      </div>
+    </div>
+    <div class="relative w-full sm:w-80">
+      <svg class="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"/></svg>
+      <input id="search" type="text" placeholder="Search tools, tags, descriptions…" class="search-input pl-10">
+    </div>
+  </div>
+</header>
+
+
+<!-- Main Content -->
+<main class="max-w-[1600px] mx-auto px-4 sm:px-6 py-6 space-y-6">
+
+  <!-- Stats Row -->
+  <section id="stats" class="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3">
+    <div class="stat-card"><p class="text-xs text-slate-400 mb-1">Active Results</p><p id="stat-total" class="text-2xl font-bold text-white counter">50</p></div>
+    <div class="stat-card"><p class="text-xs text-slate-400 mb-1">Categories</p><p id="stat-cats" class="text-2xl font-bold text-accent-blue counter">6</p></div>
+    <div class="stat-card"><p class="text-xs text-slate-400 mb-1">Entry</p><p id="stat-entry" class="text-2xl font-bold text-accent-green counter">0</p></div>
+    <div class="stat-card"><p class="text-xs text-slate-400 mb-1">Intermediate</p><p id="stat-inter" class="text-2xl font-bold text-accent-cyan counter">0</p></div>
+    <div class="stat-card"><p class="text-xs text-slate-400 mb-1">Advanced</p><p id="stat-adv" class="text-2xl font-bold text-accent-orange counter">0</p></div>
+    <div class="stat-card"><p class="text-xs text-slate-400 mb-1">Expert</p><p id="stat-expert" class="text-2xl font-bold text-accent-pink counter">0</p></div>
+  </section>
+
+  <!-- Filters -->
+  <section class="flex flex-wrap items-center gap-3">
+    <div id="cat-pills" class="flex flex-wrap gap-2"></div>
+    <select id="filter-difficulty" class="select-input text-sm">
+      <option value="">All Difficulties</option>
+      <option value="Entry">Entry</option>
+      <option value="Intermediate">Intermediate</option>
+      <option value="Advanced">Advanced</option>
+      <option value="Expert">Expert</option>
+    </select>
+    <select id="filter-stack" class="select-input text-sm">
+      <option value="">All Tech Stacks</option>
+    </select>
+  </section>
+
+  <!-- Project Grid -->
+  <section id="grid" class="card-grid"></section>
+
+  <!-- Empty State -->
+  <div id="empty" class="hidden text-center py-16">
+    <svg class="w-16 h-16 mx-auto text-slate-600 mb-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M9.172 16.172a4 4 0 015.656 0M9 10h.01M15 10h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
+    <p class="text-slate-400 text-lg">No projects match your filters</p>
+    <p class="text-slate-500 text-sm mt-1">Try adjusting your search or filter criteria</p>
+  </div>
+</main>
+
+
+<script>
+const CATEGORIES = [
+  { name: 'Creative, Audio & Visual Tools', color: '#8b5cf6' },
+  { name: 'Math, Physics & Complex Simulations', color: '#3b82f6' },
+  { name: 'Developer & Production Infrastructure', color: '#10b981' },
+  { name: 'Defensive Cyber & Security Analysis', color: '#ef4444' },
+  { name: 'Productivity & System Workbenches', color: '#f59e0b' },
+  { name: 'Advanced Algorithmic Games', color: '#ec4899' }
+];
+
+const projects = [
+  // ─── Creative, Audio & Visual Tools (1–9) ──────────────────────────
+  {id:1,title:"Generative Art Canvas",category:"Creative, Audio & Visual Tools",difficulty:"Intermediate",techStack:["Canvas","Pure JS","Perlin Noise"],description:"Procedural artwork generator using Perlin noise fields, HSL color cycling, and particle flow dynamics on an HTML5 canvas.",filePath:"projects/generative_art_canvas.html"},
+  {id:2,title:"Web Audio Synthesizer",category:"Creative, Audio & Visual Tools",difficulty:"Advanced",techStack:["Web Audio","Pure JS","SVG"],description:"Multi-oscillator subtractive synthesizer with ADSR envelope shaping, LFO modulation routing, and real-time FFT spectrum visualizer.",filePath:"projects/web_audio_synth.html"},
+  {id:3,title:"SVG Vector Illustration Editor",category:"Creative, Audio & Visual Tools",difficulty:"Expert",techStack:["SVG","Pure JS","DOM"],description:"Full-featured vector drawing tool with Bézier path editing, boolean operations, layer management, and SVG export.",filePath:"projects/svg_vector_editor.html"},
+  {id:4,title:"Pixel Art Sprite Editor",category:"Creative, Audio & Visual Tools",difficulty:"Intermediate",techStack:["Canvas","Pure JS","LocalStorage"],description:"Grid-based sprite editor with palette management, onion-skinning for animation frames, and PNG export pipeline.",filePath:"projects/pixel_art_editor.html"},
+  {id:5,title:"Audio Waveform Visualizer",category:"Creative, Audio & Visual Tools",difficulty:"Entry",techStack:["Web Audio","Canvas","Pure JS"],description:"Real-time audio file and microphone input waveform renderer with amplitude bars and frequency-domain butterfly display.",filePath:"projects/audio_waveform_viz.html"},
+  {id:6,title:"CSS Gradient Generator",category:"Creative, Audio & Visual Tools",difficulty:"Entry",techStack:["Pure JS","CSS","DOM"],description:"Interactive multi-stop linear, radial, and conic gradient builder with live preview, angle control, and CSS code export.",filePath:"projects/css_gradient_gen.html"},
+  {id:7,title:"Color Palette Extractor",category:"Creative, Audio & Visual Tools",difficulty:"Intermediate",techStack:["Canvas","Pure JS","K-Means"],description:"Drop an image and extract dominant colors via k-means clustering on pixel data, outputting harmonious palettes.",filePath:"projects/color_palette_extractor.html"},
+  {id:8,title:"Drum Machine Sequencer",category:"Creative, Audio & Visual Tools",difficulty:"Advanced",techStack:["Web Audio","Pure JS","Canvas"],description:"16-step drum sequencer with sample loading, swing quantize, per-channel gain/pan, and pattern chaining.",filePath:"projects/drum_machine_seq.html"},
+  {id:9,title:"Typography Specimen Tester",category:"Creative, Audio & Visual Tools",difficulty:"Entry",techStack:["Pure JS","CSS","DOM"],description:"Font preview workbench testing variable font axes, OpenType features, kerning pairs, and responsive type scales.",filePath:"projects/typography_specimen.html"},
+
+
+  // ─── Math, Physics & Complex Simulations (10–18) ─────────────────
+  {id:10,title:"N-Body Gravity Simulator",category:"Math, Physics & Complex Simulations",difficulty:"Advanced",techStack:["Canvas","Vector Math","Pure JS"],description:"Barnes-Hut optimized gravitational N-body simulation with velocity Verlet integration and real-time orbit tracing.",filePath:"projects/nbody_gravity_sim.html"},
+  {id:11,title:"Fourier Transform Visualizer",category:"Math, Physics & Complex Simulations",difficulty:"Advanced",techStack:["Canvas","Pure JS","Vector Math"],description:"Interactive DFT/FFT decomposition of arbitrary hand-drawn paths into rotating epicycle approximations.",filePath:"projects/fourier_transform_viz.html"},
+  {id:12,title:"Fluid Dynamics (Navier-Stokes)",category:"Math, Physics & Complex Simulations",difficulty:"Expert",techStack:["Canvas","WebGL","Vector Math"],description:"Real-time 2D incompressible fluid solver using Jos Stam's stable-fluid method with vorticity confinement and dye advection.",filePath:"projects/fluid_dynamics_sim.html"},
+  {id:13,title:"Double Pendulum Chaos",category:"Math, Physics & Complex Simulations",difficulty:"Intermediate",techStack:["Canvas","Pure JS","Vector Math"],description:"Chaotic double-pendulum system demonstrating sensitive dependence on initial conditions with phase-space trajectory plots.",filePath:"projects/double_pendulum_chaos.html"},
+  {id:14,title:"Mandelbrot & Julia Set Explorer",category:"Math, Physics & Complex Simulations",difficulty:"Intermediate",techStack:["Canvas","WebGL","Pure JS"],description:"GPU-accelerated fractal renderer with smooth iteration coloring, deep zoom (10^14), and Julia set orbit traps.",filePath:"projects/mandelbrot_explorer.html"},
+  {id:15,title:"Ray Marching SDF Renderer",category:"Math, Physics & Complex Simulations",difficulty:"Expert",techStack:["WebGL","GLSL","Vector Math"],description:"Sphere-tracing signed distance field renderer with soft shadows, ambient occlusion, and constructive solid geometry.",filePath:"projects/raymarching_sdf.html"},
+  {id:16,title:"Projectile Ballistics Calculator",category:"Math, Physics & Complex Simulations",difficulty:"Entry",techStack:["Canvas","Pure JS","Vector Math"],description:"Trajectory plotter accounting for launch angle, velocity, air resistance (quadratic drag), and Coriolis effects.",filePath:"projects/projectile_ballistics.html"},
+  {id:17,title:"Electromagnetic Field Mapper",category:"Math, Physics & Complex Simulations",difficulty:"Advanced",techStack:["Canvas","Vector Math","Pure JS"],description:"Interactive placement of point charges and current-carrying wires with real-time E/B field line computation and flux density heat map.",filePath:"projects/em_field_mapper.html"},
+  {id:18,title:"Lorenz Attractor 3D",category:"Math, Physics & Complex Simulations",difficulty:"Intermediate",techStack:["Canvas","Pure JS","Vector Math"],description:"3D Lorenz system integrated via RK4 with orbit coloring by velocity magnitude and interactive camera rotation.",filePath:"projects/lorenz_attractor_3d.html"},
+
+
+  // ─── Developer & Production Infrastructure (19–27) ───────────────
+  {id:19,title:"JSON Schema Validator",category:"Developer & Production Infrastructure",difficulty:"Intermediate",techStack:["Pure JS","DOM","RegEx"],description:"Draft-07 JSON Schema validator with recursive $ref resolution, custom format validators, and detailed error path reporting.",filePath:"projects/json_schema_validator.html"},
+  {id:20,title:"Regex Pattern Workbench",category:"Developer & Production Infrastructure",difficulty:"Entry",techStack:["Pure JS","RegEx","DOM"],description:"Live regex tester with match highlighting, capture group extraction, flag toggles, and common pattern library.",filePath:"projects/regex_workbench.html"},
+  {id:21,title:"REST API Mock Server",category:"Developer & Production Infrastructure",difficulty:"Advanced",techStack:["Pure JS","Service Worker","Fetch API"],description:"In-browser service-worker-based API mock with route matching, response templating, latency simulation, and request logging.",filePath:"projects/rest_api_mock.html"},
+  {id:22,title:"Markdown Realtime Previewer",category:"Developer & Production Infrastructure",difficulty:"Entry",techStack:["Pure JS","DOM","CSS"],description:"Split-pane Markdown editor with GFM support, syntax highlighting, table-of-contents generation, and dark/light theme toggle.",filePath:"projects/markdown_previewer.html"},
+  {id:23,title:"Git Commit Graph Renderer",category:"Developer & Production Infrastructure",difficulty:"Advanced",techStack:["SVG","Pure JS","Canvas"],description:"Visualizes Git DAG history with branch coloring, merge bubbles, interactive node inspection, and rebase simulation.",filePath:"projects/git_commit_graph.html"},
+  {id:24,title:"WebSocket Echo Debugger",category:"Developer & Production Infrastructure",difficulty:"Intermediate",techStack:["Pure JS","WebSocket","DOM"],description:"Connect to any WS endpoint, send/receive messages with binary/text framing, view ping/pong, and export session logs.",filePath:"projects/websocket_debugger.html"},
+  {id:25,title:"Cron Expression Builder",category:"Developer & Production Infrastructure",difficulty:"Entry",techStack:["Pure JS","DOM","CSS"],description:"Visual cron schedule composer with human-readable output, next-5-run previews, and timezone-aware conversion.",filePath:"projects/cron_builder.html"},
+  {id:26,title:"CSS Flexbox/Grid Playground",category:"Developer & Production Infrastructure",difficulty:"Entry",techStack:["Pure JS","CSS","DOM"],description:"Interactive layout laboratory with draggable items, live property manipulation, and generated CSS code export.",filePath:"projects/flexbox_grid_playground.html"},
+  {id:27,title:"Performance Profiler Dashboard",category:"Developer & Production Infrastructure",difficulty:"Advanced",techStack:["Pure JS","Performance API","Canvas"],description:"Real-time FPS counter, memory heap tracker, long-task detector, and layout-shift monitor with timeline waterfall chart.",filePath:"projects/perf_profiler_dashboard.html"},
+
+
+  // ─── Defensive Cyber & Security Analysis (28–36) ─────────────────
+  {id:28,title:"Password Entropy Analyzer",category:"Defensive Cyber & Security Analysis",difficulty:"Entry",techStack:["Pure JS","DOM","Crypto API"],description:"Calculates Shannon entropy, estimates brute-force time at various hash rates, checks against known breach patterns.",filePath:"projects/password_entropy.html"},
+  {id:29,title:"Network Packet Anatomy Viewer",category:"Defensive Cyber & Security Analysis",difficulty:"Intermediate",techStack:["Pure JS","SVG","DOM"],description:"Interactive OSI layer-by-layer packet dissector visualization for TCP/IP, UDP, DNS, and TLS handshake structures.",filePath:"projects/packet_anatomy_viewer.html"},
+  {id:30,title:"XSS Payload Sandbox",category:"Defensive Cyber & Security Analysis",difficulty:"Advanced",techStack:["Pure JS","DOM","iframe"],description:"Isolated sandbox for testing XSS filter evasion against a configurable WAF ruleset — educational defense training tool.",filePath:"projects/xss_sandbox.html"},
+  {id:31,title:"Hash Comparison Workbench",category:"Defensive Cyber & Security Analysis",difficulty:"Entry",techStack:["Pure JS","Crypto API","DOM"],description:"Compute and compare MD5, SHA-1, SHA-256, SHA-512 hashes of text and files with constant-time equality checking.",filePath:"projects/hash_workbench.html"},
+  {id:32,title:"CORS Policy Tester",category:"Defensive Cyber & Security Analysis",difficulty:"Intermediate",techStack:["Pure JS","Fetch API","DOM"],description:"Simulates cross-origin requests with configurable headers, visualizes preflight flow, and identifies misconfigurations.",filePath:"projects/cors_policy_tester.html"},
+  {id:33,title:"JWT Decoder & Inspector",category:"Defensive Cyber & Security Analysis",difficulty:"Intermediate",techStack:["Pure JS","Crypto API","DOM"],description:"Decode, inspect, and validate JWT tokens — header, payload, signature verification with HMAC/RSA key input.",filePath:"projects/jwt_inspector.html"},
+  {id:34,title:"Cipher Suite Analyzer",category:"Defensive Cyber & Security Analysis",difficulty:"Advanced",techStack:["Pure JS","DOM","SVG"],description:"Visualizes TLS cipher suite negotiation, grades configurations against Mozilla observatory guidelines, flags weak ciphers.",filePath:"projects/cipher_suite_analyzer.html"},
+  {id:35,title:"CSP Header Builder",category:"Defensive Cyber & Security Analysis",difficulty:"Intermediate",techStack:["Pure JS","DOM","CSS"],description:"Interactive Content-Security-Policy directive builder with violation simulation, report-uri testing, and copy-to-clipboard.",filePath:"projects/csp_header_builder.html"},
+  {id:36,title:"Base64/Hex/Binary Converter",category:"Defensive Cyber & Security Analysis",difficulty:"Entry",techStack:["Pure JS","DOM","Crypto API"],description:"Multi-format encoder/decoder supporting Base64, Base64URL, hex, binary, URL-encoding with file drag-and-drop.",filePath:"projects/base64_hex_converter.html"},
+
+
+  // ─── Productivity & System Workbenches (37–44) ───────────────────
+  {id:37,title:"Kanban Board Engine",category:"Productivity & System Workbenches",difficulty:"Intermediate",techStack:["Pure JS","DOM","LocalStorage"],description:"Drag-and-drop Kanban with swimlanes, WIP limits, card priority coloring, due-date alerts, and localStorage persistence.",filePath:"projects/kanban_board.html"},
+  {id:38,title:"Pomodoro Focus Timer",category:"Productivity & System Workbenches",difficulty:"Entry",techStack:["Pure JS","Web Audio","DOM"],description:"Configurable work/break intervals with audio cues, session history, daily streak tracking, and notification API integration.",filePath:"projects/pomodoro_timer.html"},
+  {id:39,title:"Spreadsheet Micro-Engine",category:"Productivity & System Workbenches",difficulty:"Expert",techStack:["Pure JS","DOM","Canvas"],description:"Lightweight spreadsheet with formula parser (SUM, IF, VLOOKUP), cell dependency DAG, circular-reference detection, and CSV export.",filePath:"projects/spreadsheet_engine.html"},
+  {id:40,title:"File System Tree Explorer",category:"Productivity & System Workbenches",difficulty:"Intermediate",techStack:["Pure JS","DOM","File API"],description:"Virtual directory tree with drag-and-drop reordering, context menus, lazy-loaded expansion, and breadcrumb navigation.",filePath:"projects/filesystem_tree.html"},
+  {id:41,title:"Habit Tracker Heatmap",category:"Productivity & System Workbenches",difficulty:"Entry",techStack:["SVG","Pure JS","LocalStorage"],description:"GitHub-style contribution heatmap for habit streaks with weekly/monthly views and motivational statistics panel.",filePath:"projects/habit_heatmap.html"},
+  {id:42,title:"Unit Converter Toolkit",category:"Productivity & System Workbenches",difficulty:"Entry",techStack:["Pure JS","DOM","CSS"],description:"Multi-category converter (length, mass, temperature, data, time) with live bidirectional input and conversion chain builder.",filePath:"projects/unit_converter.html"},
+  {id:43,title:"Keystroke Analytics Dashboard",category:"Productivity & System Workbenches",difficulty:"Intermediate",techStack:["Pure JS","Canvas","DOM"],description:"Real-time WPM tracker, error-rate monitor, finger heatmap overlay, and session-over-session improvement graphs.",filePath:"projects/keystroke_analytics.html"},
+  {id:44,title:"Clipboard History Manager",category:"Productivity & System Workbenches",difficulty:"Intermediate",techStack:["Pure JS","Clipboard API","DOM"],description:"Persistent clipboard stack with search, pin favorites, rich text preview, and one-click re-copy across sessions.",filePath:"projects/clipboard_manager.html"},
+
+
+  // ─── Advanced Algorithmic Games (45–50) ──────────────────────────
+  {id:45,title:"Chess AI (Minimax + α-β Pruning)",category:"Advanced Algorithmic Games",difficulty:"Expert",techStack:["Pure JS","Canvas","Alpha-Beta"],description:"Full chess engine with legal move generation, positional evaluation tables, iterative deepening, and transposition table.",filePath:"projects/chess_ai_minimax.html"},
+  {id:46,title:"Pathfinding Visualizer (A*, Dijkstra, BFS)",category:"Advanced Algorithmic Games",difficulty:"Advanced",techStack:["Canvas","Pure JS","Graph Algo"],description:"Animated grid search comparing A*, Dijkstra, BFS, and DFS with maze generation (recursive backtracker, Prim, Kruskal).",filePath:"projects/pathfinding_visualizer.html"},
+  {id:47,title:"Sorting Algorithm Theatre",category:"Advanced Algorithmic Games",difficulty:"Intermediate",techStack:["Canvas","Pure JS","DOM"],description:"Side-by-side animated comparison of 12 sorting algorithms with step counter, swap counter, and time-complexity annotations.",filePath:"projects/sorting_algo_theatre.html"},
+  {id:48,title:"Conway's Game of Life (Hashlife)",category:"Advanced Algorithmic Games",difficulty:"Advanced",techStack:["Canvas","Pure JS","Hashlife"],description:"Game of Life with Hashlife memoization for exponential time-stepping, pattern library (glider guns, spaceships), and RLE import.",filePath:"projects/game_of_life_hashlife.html"},
+  {id:49,title:"Sudoku Solver (Backtracking + Constraint Propagation)",category:"Advanced Algorithmic Games",difficulty:"Advanced",techStack:["Pure JS","DOM","Backtracking"],description:"Animated constraint-propagation solver with naked-pair/hidden-single techniques, difficulty grading, and puzzle generator.",filePath:"projects/sudoku_solver.html"},
+  {id:50,title:"Neural Network Playground",category:"Advanced Algorithmic Games",difficulty:"Expert",techStack:["Canvas","Pure JS","Vector Math"],description:"Train a small feedforward NN in-browser with backprop visualization, adjustable topology, learning rate, and decision boundary plot.",filePath:"projects/neural_net_playground.html"}
+];
+
+
+// ─── State & Constants ─────────────────────────────────────────────
+const CAT_COLORS = Object.fromEntries(CATEGORIES.map(c => [c.name, c.color]));
+const DIFFICULTY_COLORS = { Entry:'#10b981', Intermediate:'#06b6d4', Advanced:'#f59e0b', Expert:'#ec4899' };
+
+const state = { search:'', category:'All', difficulty:'', stack:'' };
+
+// ─── DOM References ────────────────────────────────────────────────
+const $grid = document.getElementById('grid');
+const $empty = document.getElementById('empty');
+const $search = document.getElementById('search');
+const $catPills = document.getElementById('cat-pills');
+const $diffFilter = document.getElementById('filter-difficulty');
+const $stackFilter = document.getElementById('filter-stack');
+
+// ─── Populate Tech Stack Dropdown ──────────────────────────────────
+const allStacks = [...new Set(projects.flatMap(p => p.techStack))].sort();
+allStacks.forEach(s => {
+  const opt = document.createElement('option');
+  opt.value = s; opt.textContent = s;
+  $stackFilter.appendChild(opt);
+});
+
+// ─── Render Category Pills ─────────────────────────────────────────
+function renderPills() {
+  $catPills.innerHTML = '';
+  const allPill = document.createElement('button');
+  allPill.className = `pill text-slate-300 bg-surface-700 ${state.category === 'All' ? 'active' : ''}`;
+  allPill.style.color = state.category === 'All' ? '#3b82f6' : '';
+  allPill.textContent = 'All';
+  allPill.onclick = () => { state.category = 'All'; render(); };
+  $catPills.appendChild(allPill);
+
+  CATEGORIES.forEach(cat => {
+    const btn = document.createElement('button');
+    const isActive = state.category === cat.name;
+    btn.className = `pill ${isActive ? 'active' : ''}`;
+    btn.style.color = cat.color;
+    btn.style.backgroundColor = isActive ? cat.color + '20' : '#272d3f';
+    btn.textContent = cat.name.split(',')[0].split('&')[0].trim();
+    btn.onclick = () => { state.category = cat.name; render(); };
+    $catPills.appendChild(btn);
+  });
+}
+
+
+// ─── Filter Logic ──────────────────────────────────────────────────
+function getFiltered() {
+  return projects.filter(p => {
+    if (state.category !== 'All' && p.category !== state.category) return false;
+    if (state.difficulty && p.difficulty !== state.difficulty) return false;
+    if (state.stack && !p.techStack.includes(state.stack)) return false;
+    if (state.search) {
+      const q = state.search.toLowerCase();
+      const haystack = `${p.title} ${p.description} ${p.techStack.join(' ')}`.toLowerCase();
+      if (!haystack.includes(q)) return false;
+    }
+    return true;
+  });
+}
+
+// ─── Stats Update ──────────────────────────────────────────────────
+function updateStats(filtered) {
+  document.getElementById('stat-total').textContent = filtered.length;
+  const activeCats = new Set(filtered.map(p => p.category));
+  document.getElementById('stat-cats').textContent = activeCats.size;
+  document.getElementById('stat-entry').textContent = filtered.filter(p => p.difficulty === 'Entry').length;
+  document.getElementById('stat-inter').textContent = filtered.filter(p => p.difficulty === 'Intermediate').length;
+  document.getElementById('stat-adv').textContent = filtered.filter(p => p.difficulty === 'Advanced').length;
+  document.getElementById('stat-expert').textContent = filtered.filter(p => p.difficulty === 'Expert').length;
+}
+
+// ─── Card Renderer ─────────────────────────────────────────────────
+function renderCard(p) {
+  const catColor = CAT_COLORS[p.category] || '#3b82f6';
+  const diffColor = DIFFICULTY_COLORS[p.difficulty] || '#94a3b8';
+  return `
+  <article class="card fade-in" style="--cat-color:${catColor}">
+    <div class="flex items-start justify-between mb-3">
+      <span class="text-[.65rem] font-medium tracking-wide uppercase" style="color:${catColor}">${p.category.split(',')[0].trim()}</span>
+      <span class="badge" style="background:${diffColor}20;color:${diffColor}">${p.difficulty}</span>
+    </div>
+    <h3 class="text-white font-semibold text-sm mb-2 leading-snug">${p.title}</h3>
+    <p class="text-slate-400 text-xs leading-relaxed mb-3">${p.description}</p>
+    <div class="flex flex-wrap gap-1 mb-4">${p.techStack.map(t => `<span class="tag">${t}</span>`).join('')}</div>
+    <a href="${p.filePath}" class="inline-flex items-center gap-1.5 text-xs font-medium px-3 py-1.5 rounded-md transition"
+       style="background:${catColor}15;color:${catColor};border:1px solid ${catColor}40"
+       onmouseover="this.style.background='${catColor}30'" onmouseout="this.style.background='${catColor}15'">
+      <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M14.752 11.168l-3.197-2.132A1 1 0 0010 9.87v4.263a1 1 0 001.555.832l3.197-2.132a1 1 0 000-1.664z"/><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
+      Launch Tool
+    </a>
+  </article>`;
+}
+
+
+// ─── Master Render ─────────────────────────────────────────────────
+function render() {
+  renderPills();
+  const filtered = getFiltered();
+  updateStats(filtered);
+  if (filtered.length === 0) {
+    $grid.innerHTML = '';
+    $empty.classList.remove('hidden');
+  } else {
+    $empty.classList.add('hidden');
+    $grid.innerHTML = filtered.map(renderCard).join('');
+  }
+}
+
+// ─── Event Bindings ────────────────────────────────────────────────
+let searchTimer = null;
+$search.addEventListener('input', e => {
+  clearTimeout(searchTimer);
+  searchTimer = setTimeout(() => { state.search = e.target.value.trim(); render(); }, 120);
+});
+$diffFilter.addEventListener('change', e => { state.difficulty = e.target.value; render(); });
+$stackFilter.addEventListener('change', e => { state.stack = e.target.value; render(); });
+
+// ─── Initial Render ────────────────────────────────────────────────
+render();
+</script>
+
+<!-- Footer -->
+<footer class="max-w-[1600px] mx-auto px-4 sm:px-6 py-6 mt-8 border-t border-surface-600">
+  <p class="text-center text-xs text-slate-500">Portfolio Dashboard &mdash; 50 Standalone Tools &amp; Algorithmic Games &mdash; Pure Vanilla JS &bull; Zero External Dependencies (except Tailwind CDN)</p>
+</footer>
+</body>
+</html>
