@@ -1,0 +1,23 @@
+{
+  "name": "edge-resilience-suite",
+  "version": "1.0.0",
+  "description": "Cloud-native edge runtimes (V8 isolate), chaos-engineering simulators with production guard rails, and cryptographic decentralized-auth + ledger mechanics.",
+  "license": "MIT",
+  "private": true,
+  "type": "commonjs",
+  "engines": {
+    "node": ">=18.0.0"
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "demo:chaos": "node chaos-engineering/failure-simulator/chaos-injector.js",
+    "demo:ecdsa": "node crypto-decentralized-auth/signature-verifier/ecdsa-auth.js",
+    "demo:breaker": "ts-node chaos-engineering/circuit-breaker-test/breaker-evaluator.ts",
+    "demo:ledger": "ts-node crypto-decentralized-auth/ledger-block-hasher/block-hasher.ts"
+  },
+  "devDependencies": {
+    "@types/node": "^20.14.10",
+    "ts-node": "^10.9.2",
+    "typescript": "^5.5.3"
+  }
+}
